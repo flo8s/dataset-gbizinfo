@@ -1,5 +1,9 @@
 name: Sync
 
+# gBizINFO のアクセストークンはこのリポジトリ専用の Repository secret
+# GBIZINFO_API_TOKEN を使う。共有ワークフロー (dataset-shared) には渡さず、
+# ここで自己完結してビルドする。それ以外の認証情報は org の secrets/variables。
+
 on:
   push:
     branches: [main]
@@ -15,8 +19,58 @@ concurrency:
 
 jobs:
   sync:
-    uses: flo8s/dataset-shared/.github/workflows/sync.yml@main
-    with:
-      dataset_name: gbizinfo
-      s3_bucket: ${{ vars.S3_BUCKET }}
-    secrets: inherit
+    runs-on: ubuntu-latest
+    env:
+      PYTHONUNBUFFERED: "1"
+      NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+      QUERIA_S3_ENDPOINT: https://${{ secrets.CF_ACCOUNT_ID }}.r2.cloudflarestorage.com
+      QUERIA_S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+      QUERIA_S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+      QUERIA_S3_BUCKET: ${{ vars.S3_BUCKET }}
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+      CF_D1_DATABASE_ID: ${{ secrets.CF_D1_DATABASE_ID }}
+      GBIZINFO_API_TOKEN: ${{ secrets.GBIZINFO_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv python install 3.13
+      - run: uv sync
+
+      - name: Build and push
+        run: scripts/build.sh default
+
+      - name: Generate app token
+        id: app-token
+        if: success()
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: flo8s
+          repositories: dataset-catalog
+
+      - name: Trigger catalog rebuild
+        if: success()
+        run: |
+          gh api repos/flo8s/dataset-catalog/dispatches \
+            -f event_type=dataset-updated \
+            -f "client_payload[dataset]=gbizinfo"
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+  notify-failure:
+    runs-on: ubuntu-latest
+    needs: sync
+    if: failure()
+    steps:
+      - name: Notify Discord on failure
+        run: |
+          curl -s -H "Content-Type: application/json" \
+            -d "{\"embeds\": [{\"title\": \"Sync Failed\", \"url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\", \"color\": 15158332, \"fields\": [{\"name\": \"Repository\", \"value\": \"${{ github.repository }}\"}, {\"name\": \"Branch\", \"value\": \"${{ github.ref_name }}\"}, {\"name\": \"Commit\", \"value\": \"${{ github.sha }}\"}]}]}" \
+            "${{ secrets.DISCORD_WEBHOOK_URL }}"
