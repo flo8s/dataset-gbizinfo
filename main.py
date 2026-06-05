@@ -3,15 +3,18 @@
 経済産業省 gBizINFO のデータダウンロード機能から情報種別ごとの全件 CSV を取得し、
 そのパスを dbt の var として渡して raw→stg→mart を構築する。
 
-取得方式は当面「一括ダウンロードのみ」。初回も月次も全件 CSV を再取得する
-(全件で約 1.9GB。CI では負荷軽微)。REST API による差分更新は将来の最適化として
-別途実装する余地を残している。
+gBizINFO の各ファイル (特許を除く) は日次更新される。鮮度を上げるため、更新の
+頻度に応じて取得対象を 2 モードに分ける:
 
-ダウンロード機構 (実証済み):
-  1. GET /hojin/DownloadTop でセッション (JSESSIONID cookie) を確立する
-  2. 同一セッションで POST /hojin/Download に種別・文字コード・トークンを送る
-     (downtype を付けないとトークンエラーの HTML が返る)
-  3. content-type が application/octet-stream なら CSV 本体が返る
+  full (月次・既定):
+    基本情報を含む全 5 種別を取得して全モデルをビルドする。
+    基本情報 (Kihonjoho) は約 1.7GB と重いが変化が緩やかなため月次で十分。
+
+  activity (日次): 環境変数 GBIZINFO_SYNC_MODE=activity で指定。
+    補助金・調達・財務・職場の活動 4 種別 (計約 220MB) のみ取得し、
+    `dbt build --exclude raw_gbizinfo_basic` で基本情報層を据え置いたまま
+    活動データと mart を再ビルドする。基本情報は前回の full ビルドの
+    raw_gbizinfo_basic テーブルをそのまま使う。
 
 snapshot は dbt build と同一プロセスで実行する必要がある
 (dataset-shared/README.md の制約を参照)。
@@ -27,10 +30,14 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+import duckdb
 import httpx
 from dbt.cli.main import dbtRunner
 
 SHARED_SCRIPTS = Path(__file__).resolve().parent / "shared" / "scripts"
+sys.path.insert(0, str(SHARED_SCRIPTS))
+from queria_config import load_target  # noqa: E402
+
 _spec = importlib.util.spec_from_file_location(
     "snapshot_to_r2", SHARED_SCRIPTS / "snapshot-to-r2.py"
 )
@@ -59,14 +66,18 @@ class TypeSpec:
     downfile: str  # DownloadTop の downfile パラメータ値
 
 
-# 取得対象の 5 種別。dbt var 名は gbiz_<key>_csv。
-TYPES: list[TypeSpec] = [
-    TypeSpec("basic", "Kihonjoho"),
+BASIC = TypeSpec("basic", "Kihonjoho")
+# 日次更新する活動データ。dbt var 名は gbiz_<key>_csv。
+ACTIVITY_TYPES: list[TypeSpec] = [
     TypeSpec("subsidy", "Hojokinjoho"),
     TypeSpec("procurement", "Chotatsujoho"),
     TypeSpec("finance", "Zaimujoho"),
     TypeSpec("workplace", "Shokubajoho"),
 ]
+ALL_TYPES: list[TypeSpec] = [BASIC, *ACTIVITY_TYPES]
+
+# activity モードで据え置く (再ビルドしない) 基本情報の raw モデル。
+BASIC_RAW_MODEL = "raw_gbizinfo_basic"
 
 
 def _download_csv(client: httpx.Client, spec: TypeSpec, token: str, dest_dir: Path) -> Path:
@@ -101,15 +112,55 @@ def _download_csv(client: httpx.Client, spec: TypeSpec, token: str, dest_dir: Pa
     return csv_path
 
 
+def _raw_basic_exists(target_name: str) -> bool:
+    """raw_gbizinfo_basic テーブルが DuckLake に存在するか確認する。
+
+    activity モードは基本情報層を据え置くため、初回 (full 未実行) は成立しない。
+    その場合は full にフォールバックさせる。
+    """
+    target = load_target(target_name)
+    conn = duckdb.connect(":memory:")
+    try:
+        conn.execute("INSTALL ducklake; LOAD ducklake;")
+        conn.execute("INSTALL postgres; LOAD postgres;")
+        conn.execute("INSTALL httpfs; LOAD httpfs;")
+        conn.execute(
+            "CREATE SECRET r2 (TYPE r2, KEY_ID ?, SECRET ?, ACCOUNT_ID ?)",
+            [target.s3_access_key_id, target.s3_secret_access_key, target.cf_account_id],
+        )
+        conn.execute(
+            f"ATTACH '{target.ducklake_uri}' AS \"{target.dataset}\" "
+            f"(DATA_PATH '{target.data_path}', META_SCHEMA '{target.meta_schema}')"
+        )
+        rows = conn.execute(
+            "SELECT 1 FROM information_schema.tables "
+            "WHERE table_catalog = ? AND table_name = ?",
+            [target.dataset, BASIC_RAW_MODEL],
+        ).fetchall()
+        return bool(rows)
+    finally:
+        conn.close()
+
+
 def main() -> None:
     target = os.environ.get("DBT_TARGET", sys.argv[1] if len(sys.argv) > 1 else "default")
+    mode = os.environ.get("GBIZINFO_SYNC_MODE", "full").lower()
     token = os.environ["GBIZINFO_API_TOKEN"]
 
-    # CSV は全件で約 1.9GB あるため一時ディレクトリへ。build 完了まで保持する
-    # (raw モデルが read_csv で参照するため)。
+    if mode == "activity" and not _raw_basic_exists(target):
+        logger.warning(
+            "activity モードだが %s が存在しないため full にフォールバックします",
+            BASIC_RAW_MODEL,
+        )
+        mode = "full"
+
+    types = ACTIVITY_TYPES if mode == "activity" else ALL_TYPES
+    logger.info("mode=%s: %d 種別を取得", mode, len(types))
+
+    # CSV は一時ディレクトリへ。build 完了まで保持する (raw モデルが参照するため)。
     with tempfile.TemporaryDirectory(prefix="gbizinfo_") as tmp:
         dest = Path(tmp)
-        dbt_vars_parts: list[str] = []
+        downloaded: dict[str, Path] = {}
         with httpx.Client(
             headers={"User-Agent": USER_AGENT},
             follow_redirects=True,
@@ -117,17 +168,27 @@ def main() -> None:
         ) as client:
             # DownloadTop を GET して JSESSIONID cookie を確立してから取得する
             client.get(DOWNLOAD_TOP).raise_for_status()
-            for spec in TYPES:
-                csv_path = _download_csv(client, spec, token, dest)
-                dbt_vars_parts.append(f"gbiz_{spec.key}_csv: '{csv_path}'")
+            for spec in types:
+                downloaded[spec.key] = _download_csv(client, spec, token, dest)
+
+        # raw モデルは var('gbiz_<key>_csv') を参照するため、全 5 種別の var を
+        # 定義する (activity モードで未取得の基本情報はダミーパス。raw_gbizinfo_basic
+        # を --exclude するため実行時には参照されない)。
+        unused = dest / "__unused__.csv"
+        dbt_vars_parts = [
+            f"gbiz_{spec.key}_csv: '{downloaded.get(spec.key, unused)}'"
+            for spec in ALL_TYPES
+        ]
         dbt_vars = "{" + ", ".join(dbt_vars_parts) + "}"
 
-        # raw モデルが var('gbiz_<key>_csv') を参照するため、build だけでなく
-        # docs generate にも同じ var を渡す (未指定だとコンパイルエラーになる)。
+        build_cmd = ["build", "--target", target, "--vars", dbt_vars]
+        if mode == "activity":
+            build_cmd += ["--exclude", BASIC_RAW_MODEL]
+
         dbt = dbtRunner()
         for cmd in (
             ["deps"],
-            ["build", "--target", target, "--vars", dbt_vars],
+            build_cmd,
             ["docs", "generate", "--target", target, "--vars", dbt_vars],
         ):
             result = dbt.invoke(cmd)

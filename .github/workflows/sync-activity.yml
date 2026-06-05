@@ -1,19 +1,13 @@
-name: Sync
+name: Sync (activity)
 
-# 月次の full ビルド (基本情報を含む全 5 種別)。GBIZINFO_SYNC_MODE は未設定で
-# main.py の既定 full。日次の活動データ更新は sync-activity.yml が担う。
-#
-# gBizINFO のアクセストークンはこのリポジトリ専用の Repository secret
-# GBIZINFO_API_TOKEN を使う。共有ワークフロー (dataset-shared) には渡さず、
-# ここで自己完結してビルドする。それ以外の認証情報は org の secrets/variables。
+# 活動データ (補助金・調達・財務・職場、計約220MB) を日次で取得して再ビルドする。
+# gBizINFO のファイルは日次更新されるため鮮度を上げる目的。基本情報 (1.7GB) は
+# 据え置き、月次の Sync (full) で更新する。
+# トークンはこのリポジトリ専用の Repository secret GBIZINFO_API_TOKEN を使う。
 
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - "*.md"
   schedule:
-    - cron: "0 20 1 * *" # 毎月1日 05:00 JST
+    - cron: "0 21 * * *" # 毎日 06:00 JST
   workflow_dispatch:
 
 concurrency:
@@ -25,6 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PYTHONUNBUFFERED: "1"
+      GBIZINFO_SYNC_MODE: activity
       NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
       QUERIA_S3_ENDPOINT: https://${{ secrets.CF_ACCOUNT_ID }}.r2.cloudflarestorage.com
       QUERIA_S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
@@ -75,5 +70,5 @@ jobs:
       - name: Notify Discord on failure
         run: |
           curl -s -H "Content-Type: application/json" \
-            -d "{\"embeds\": [{\"title\": \"Sync Failed\", \"url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\", \"color\": 15158332, \"fields\": [{\"name\": \"Repository\", \"value\": \"${{ github.repository }}\"}, {\"name\": \"Branch\", \"value\": \"${{ github.ref_name }}\"}, {\"name\": \"Commit\", \"value\": \"${{ github.sha }}\"}]}]}" \
+            -d "{\"embeds\": [{\"title\": \"Sync (activity) Failed\", \"url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\", \"color\": 15158332, \"fields\": [{\"name\": \"Repository\", \"value\": \"${{ github.repository }}\"}, {\"name\": \"Branch\", \"value\": \"${{ github.ref_name }}\"}, {\"name\": \"Commit\", \"value\": \"${{ github.sha }}\"}]}]}" \
             "${{ secrets.DISCORD_WEBHOOK_URL }}"

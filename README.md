@@ -22,11 +22,21 @@ gBizINFO の「データダウンロード」から取得した 5 種別の全�
 
 ## 取得方式
 
-当面は gBizINFO の一括ダウンロード (DownloadTop) から全件 CSV を取得する方式のみ。
-初回も月次更新も全件を再取得する (全件で約 1.9GB)。
+gBizINFO のデータダウンロード (DownloadTop) から全件 CSV を取得する。各ファイルは
+日次更新されるため、更新頻度に応じて 2 モードに分けて鮮度を上げている。
 
-将来的には REST API (`updateInfo` + 法人番号別取得) による差分更新への最適化余地がある
-(REST のレスポンス構造は一括 CSV と異なるため、別途マッパーの実装が必要)。
+- full (月次): 基本情報を含む全 5 種別を取得して全モデルを再ビルドする
+  (基本情報 Kihonjoho は約 1.7GB と重いが変化が緩やかなため月次)。
+  ワークフロー: `.github/workflows/sync.yml`
+- activity (日次): 活動 4 種別 (補助金・調達・財務・職場、計約 220MB) のみ取得し、
+  `dbt build --exclude raw_gbizinfo_basic` で基本情報層を据え置いたまま活動データと
+  mart を再ビルドする。ワークフロー: `.github/workflows/sync-activity.yml`
+
+モードは環境変数 `GBIZINFO_SYNC_MODE` (`full` 既定 / `activity`) で切り替える。
+activity モードでも基本情報テーブルが存在しなければ full にフォールバックする。
+
+法人の名称・住所は国税庁法人番号 (dataset-houjin-bangou) と重複するため、本データセットは
+corporate_number で結合できる形を保ち、物理的な結合はしない (利用側で結合する)。
 
 ## セットアップと実行
 
