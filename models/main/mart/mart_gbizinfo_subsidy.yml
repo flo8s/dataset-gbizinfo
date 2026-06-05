@@ -1,0 +1,38 @@
+version: 2
+
+models:
+  - name: mart_gbizinfo_subsidy
+    description: gBizINFO の補助金交付実績(補助金 1 件 1 行)。corporate_number で国税庁法人番号(houjin_bangou)と結合できる
+    config:
+      meta:
+        title: 補助金交付実績
+        published: true
+        source_url: "https://info.gbiz.go.jp/"
+        credit: >-
+          出典：gBizINFO（経済産業省）。
+          gBizINFO 利用規約に基づき出典を明記して再配布しています。
+          最新性・正確性・完全性等が保証されたものではありません
+    columns:
+      - name: corporate_number
+        meta:
+          title: 法人番号
+          description: 13桁。国税庁法人番号(houjin_bangou)と結合できる
+      - name: name
+        meta:
+          title: 商号または名称
+      - name: title
+        meta:
+          title: 補助金名称
+      - name: amount
+        meta:
+          title: 金額
+          description: 円
+      - name: target
+        meta:
+          title: 対象
+      - name: issuer
+        meta:
+          title: 発行元
+      - name: certification_date
+        meta:
+          title: 証明日

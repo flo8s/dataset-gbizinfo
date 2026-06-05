@@ -1,0 +1,38 @@
+version: 2
+
+models:
+  - name: mart_gbizinfo_procurement
+    description: gBizINFO の国の調達(受注)実績(受注 1 件 1 行)。corporate_number で国税庁法人番号(houjin_bangou)と結合できる
+    config:
+      meta:
+        title: 調達(受注)実績
+        published: true
+        source_url: "https://info.gbiz.go.jp/"
+        credit: >-
+          出典：gBizINFO（経済産業省）。
+          gBizINFO 利用規約に基づき出典を明記して再配布しています。
+          最新性・正確性・完全性等が保証されたものではありません
+    columns:
+      - name: corporate_number
+        meta:
+          title: 法人番号
+          description: 13桁。国税庁法人番号(houjin_bangou)と結合できる
+      - name: name
+        meta:
+          title: 商号または名称
+      - name: title
+        meta:
+          title: 件名
+      - name: award_price
+        meta:
+          title: 落札価格
+          description: 円
+      - name: org_name
+        meta:
+          title: 発注組織名
+      - name: note
+        meta:
+          title: 備考
+      - name: order_date
+        meta:
+          title: 受注日

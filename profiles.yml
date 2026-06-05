@@ -1,0 +1,43 @@
+gbizinfo:
+  target: default
+  outputs:
+    default:
+      type: duckdb
+      path: ":memory:"
+      # DuckLake は並列コミットで snapshot_id が衝突するため 1 に固定する
+      threads: 1
+      extensions:
+        - httpfs
+        - postgres
+        - ducklake
+      secrets:
+        - type: r2
+          key_id: "{{ env_var('QUERIA_S3_ACCESS_KEY_ID', '') }}"
+          secret: "{{ env_var('QUERIA_S3_SECRET_ACCESS_KEY', '') }}"
+          account_id: "{{ env_var('CF_ACCOUNT_ID', '') }}"
+      attach:
+        - path: "ducklake:postgres:{{ env_var('NEON_DATABASE_URL', '') }}"
+          alias: gbizinfo
+          options:
+            data_path: "r2://{{ env_var('QUERIA_S3_BUCKET', '') }}/gbizinfo/ducklake.duckdb.files/"
+            meta_schema: "gbizinfo"
+    local:
+      type: duckdb
+      path: ":memory:"
+      # DuckLake は並列コミットで snapshot_id が衝突するため 1 に固定する
+      threads: 1
+      extensions:
+        - httpfs
+        - postgres
+        - ducklake
+      secrets:
+        - type: r2
+          key_id: "{{ env_var('QUERIA_S3_ACCESS_KEY_ID', '') }}"
+          secret: "{{ env_var('QUERIA_S3_SECRET_ACCESS_KEY', '') }}"
+          account_id: "{{ env_var('CF_ACCOUNT_ID', '') }}"
+      attach:
+        - path: "ducklake:postgres:{{ env_var('NEON_DATABASE_URL', '') }}"
+          alias: gbizinfo
+          options:
+            data_path: "r2://{{ env_var('QUERIA_DEV_S3_BUCKET', 'queria-dev') }}/gbizinfo/ducklake.duckdb.files/"
+            meta_schema: "dev_gbizinfo"

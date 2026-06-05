@@ -1,0 +1,27 @@
+[project]
+name = "dataset-gbizinfo"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "dbt-core>=1.11.2",
+    "dbt-duckdb>=1.10.0",
+    "duckdb>=1.5.0,<1.5.3",
+    "boto3>=1.35",
+    "httpx>=0.27",
+    "pyarrow",
+]
+
+[tool.queria]
+name = "gbizinfo"
+title = "gBizINFO 法人活動情報"
+description = "経済産業省 gBizINFO が公開する法人活動情報。法人番号をキーに、基本情報（資本金・従業員数・設立年・業種）、補助金、調達、財務、職場情報を収録。国税庁法人番号と結合できる"
+cover = "🏛️"
+tags = ["法人", "企業活動", "補助金", "調達", "財務", "経済産業省"]
+license = "gBizINFO 利用規約準拠（出典明記のうえ商用利用可）"
+license_url = "https://info.gbiz.go.jp/agreement/index.html"
+repository_url = "https://github.com/flo8s/dataset-gbizinfo"
+source_url = "https://info.gbiz.go.jp/"
+schedule = "monthly"
+
+[tool.queria.schemas.main]
+title = "法人活動情報"
