@@ -1,7 +1,9 @@
-"""gBizINFO 法人活動情報の取得 + dbt build + snapshot pipeline.
+"""gBizINFO 法人活動情報の取得 + dbt build パイプライン.
 
 経済産業省 gBizINFO のデータダウンロード機能から情報種別ごとの全件 CSV を取得し、
 そのパスを dbt の var として渡して raw→stg→mart を構築する。
+fdl の DuckLake カタログ (FDL_* 環境変数で注入) へ書き込み、
+R2 への公開は fdl run/sync の publish が担う。
 
 gBizINFO の各ファイル (特許を除く) は日次更新される。鮮度を上げるため、更新の
 頻度に応じて取得対象を 2 モードに分ける:
@@ -15,35 +17,24 @@ gBizINFO の各ファイル (特許を除く) は日次更新される。鮮度�
     `dbt build --exclude raw_gbizinfo_basic` で基本情報層を据え置いたまま
     活動データと mart を再ビルドする。基本情報は前回の full ビルドの
     raw_gbizinfo_basic テーブルをそのまま使う。
-
-snapshot は dbt build と同一プロセスで実行する必要がある
-(dataset-shared/README.md の制約を参照)。
+    既存カタログの raw_gbizinfo_basic を参照するため、CI では
+    scripts/build.sh が `fdl pull` で公開済みカタログを取り込んでから実行する。
 """
 
 from __future__ import annotations
 
-import importlib.util
 import logging
 import os
 import sys
 import tempfile
+from collections.abc import Generator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
 import duckdb
 import httpx
 from dbt.cli.main import dbtRunner
-
-SHARED_SCRIPTS = Path(__file__).resolve().parent / "shared" / "scripts"
-sys.path.insert(0, str(SHARED_SCRIPTS))
-from queria_config import load_target  # noqa: E402
-
-_spec = importlib.util.spec_from_file_location(
-    "snapshot_to_r2", SHARED_SCRIPTS / "snapshot-to-r2.py"
-)
-assert _spec and _spec.loader
-snapshot_to_r2 = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(snapshot_to_r2)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -112,34 +103,49 @@ def _download_csv(client: httpx.Client, spec: TypeSpec, token: str, dest_dir: Pa
     return csv_path
 
 
-def _raw_basic_exists(target_name: str) -> bool:
+@contextmanager
+def _ducklake_connect() -> Generator[duckdb.DuckDBPyConnection]:
+    """Open a fresh DuckDB session with the fdl-managed DuckLake attached."""
+    catalog_path = os.environ["FDL_CATALOG_PATH"]
+    data_url = os.environ["FDL_DATA_URL"]
+    conn = duckdb.connect(":memory:")
+    try:
+        conn.execute("INSTALL ducklake; LOAD ducklake;")
+        conn.execute("INSTALL sqlite; LOAD sqlite;")
+        if data_url.startswith("s3://"):
+            conn.execute("INSTALL httpfs; LOAD httpfs;")
+            conn.execute(
+                "CREATE SECRET (TYPE s3, KEY_ID ?, SECRET ?, ENDPOINT ?, "
+                "URL_STYLE 'path', REGION 'auto')",
+                [
+                    os.environ["FDL_S3_ACCESS_KEY_ID"],
+                    os.environ["FDL_S3_SECRET_ACCESS_KEY"],
+                    os.environ["FDL_S3_ENDPOINT_HOST"],
+                ],
+            )
+        conn.execute(
+            f"ATTACH 'ducklake:{catalog_path}' AS gbizinfo "
+            f"(DATA_PATH '{data_url}', OVERRIDE_DATA_PATH true, "
+            f"META_TYPE 'sqlite', META_JOURNAL_MODE 'WAL', BUSY_TIMEOUT 5000)"
+        )
+        yield conn
+    finally:
+        conn.close()
+
+
+def _raw_basic_exists() -> bool:
     """raw_gbizinfo_basic テーブルが DuckLake に存在するか確認する。
 
     activity モードは基本情報層を据え置くため、初回 (full 未実行) は成立しない。
     その場合は full にフォールバックさせる。
     """
-    target = load_target(target_name)
-    conn = duckdb.connect(":memory:")
-    try:
-        conn.execute("INSTALL ducklake; LOAD ducklake;")
-        conn.execute("INSTALL postgres; LOAD postgres;")
-        conn.execute("INSTALL httpfs; LOAD httpfs;")
-        conn.execute(
-            "CREATE SECRET r2 (TYPE r2, KEY_ID ?, SECRET ?, ACCOUNT_ID ?)",
-            [target.s3_access_key_id, target.s3_secret_access_key, target.cf_account_id],
-        )
-        conn.execute(
-            f"ATTACH '{target.ducklake_uri}' AS \"{target.dataset}\" "
-            f"(DATA_PATH '{target.data_path}', META_SCHEMA '{target.meta_schema}')"
-        )
+    with _ducklake_connect() as conn:
         rows = conn.execute(
             "SELECT 1 FROM information_schema.tables "
-            "WHERE table_catalog = ? AND table_name = ?",
-            [target.dataset, BASIC_RAW_MODEL],
+            "WHERE table_catalog = 'gbizinfo' AND table_name = ?",
+            [BASIC_RAW_MODEL],
         ).fetchall()
         return bool(rows)
-    finally:
-        conn.close()
 
 
 def main() -> None:
@@ -147,7 +153,7 @@ def main() -> None:
     mode = os.environ.get("GBIZINFO_SYNC_MODE", "full").lower()
     token = os.environ["GBIZINFO_API_TOKEN"]
 
-    if mode == "activity" and not _raw_basic_exists(target):
+    if mode == "activity" and not _raw_basic_exists():
         logger.warning(
             "activity モードだが %s が存在しないため full にフォールバックします",
             BASIC_RAW_MODEL,
@@ -194,8 +200,6 @@ def main() -> None:
             result = dbt.invoke(cmd)
             if not result.success:
                 raise SystemExit(f"dbt {' '.join(cmd)} failed")
-
-    snapshot_to_r2.run(target)
 
 
 if __name__ == "__main__":
