@@ -5,19 +5,20 @@
 fdl の DuckLake カタログ (FDL_* 環境変数で注入) へ書き込み、
 R2 への公開は fdl run/sync の publish が担う。
 
-gBizINFO の各ファイル (特許を除く) は日次更新される。鮮度を上げるため、更新の
-頻度に応じて取得対象を 2 モードに分ける:
+gBizINFO の各ファイル (基本情報・特許を除く) は日次更新される。鮮度を上げるため、
+更新の頻度に応じて取得対象を 2 モードに分ける:
 
   full (月次・既定):
-    基本情報を含む全 5 種別を取得して全モデルをビルドする。
-    基本情報 (Kihonjoho) は約 1.7GB と重いが変化が緩やかなため月次で十分。
+    基本情報・特許を含む全 8 種別を取得して全モデルをビルドする。
+    基本情報 (Kihonjoho 約 1.7GB)・特許 (Tokkyojoho 約 1.2GB) は重いが
+    変化が緩やかなため月次で十分。
 
   activity (日次): 環境変数 GBIZINFO_SYNC_MODE=activity で指定。
-    補助金・調達・財務・職場の活動 4 種別 (計約 220MB) のみ取得し、
-    `dbt build --exclude raw_gbizinfo_basic` で基本情報層を据え置いたまま
-    活動データと mart を再ビルドする。基本情報は前回の full ビルドの
-    raw_gbizinfo_basic テーブルをそのまま使う。
-    既存カタログの raw_gbizinfo_basic を参照するため、CI では
+    補助金・調達・財務・職場・表彰・届出認定の活動 6 種別のみ取得し、
+    `dbt build --exclude raw_gbizinfo_basic raw_gbizinfo_patent` で
+    基本情報・特許層を据え置いたまま活動データと mart を再ビルドする。
+    据え置く層は前回の full ビルドのテーブルをそのまま使う。
+    既存カタログの raw_gbizinfo_basic / raw_gbizinfo_patent を参照するため、CI では
     scripts/build.sh が `fdl pull` で公開済みカタログを取り込んでから実行する。
 """
 
@@ -57,18 +58,24 @@ class TypeSpec:
     downfile: str  # DownloadTop の downfile パラメータ値
 
 
-BASIC = TypeSpec("basic", "Kihonjoho")
+# 月次 full ビルドでのみ取得する重量級・低頻度更新の種別。
+FULL_ONLY_TYPES: list[TypeSpec] = [
+    TypeSpec("basic", "Kihonjoho"),
+    TypeSpec("patent", "Tokkyojoho"),
+]
 # 日次更新する活動データ。dbt var 名は gbiz_<key>_csv。
 ACTIVITY_TYPES: list[TypeSpec] = [
     TypeSpec("subsidy", "Hojokinjoho"),
     TypeSpec("procurement", "Chotatsujoho"),
     TypeSpec("finance", "Zaimujoho"),
     TypeSpec("workplace", "Shokubajoho"),
+    TypeSpec("commendation", "Hyoshojoho"),
+    TypeSpec("certification", "TodokedeNinteijoho"),
 ]
-ALL_TYPES: list[TypeSpec] = [BASIC, *ACTIVITY_TYPES]
+ALL_TYPES: list[TypeSpec] = [*FULL_ONLY_TYPES, *ACTIVITY_TYPES]
 
-# activity モードで据え置く (再ビルドしない) 基本情報の raw モデル。
-BASIC_RAW_MODEL = "raw_gbizinfo_basic"
+# activity モードで据え置く (再ビルドしない) full 専用種別の raw モデル。
+FULL_ONLY_RAW_MODELS = [f"raw_gbizinfo_{spec.key}" for spec in FULL_ONLY_TYPES]
 
 
 def _download_csv(client: httpx.Client, spec: TypeSpec, token: str, dest_dir: Path) -> Path:
@@ -133,19 +140,23 @@ def _ducklake_connect() -> Generator[duckdb.DuckDBPyConnection]:
         conn.close()
 
 
-def _raw_basic_exists() -> bool:
-    """raw_gbizinfo_basic テーブルが DuckLake に存在するか確認する。
+def _full_only_raw_exists() -> bool:
+    """full 専用種別の raw テーブルがすべて DuckLake に存在するか確認する。
 
-    activity モードは基本情報層を据え置くため、初回 (full 未実行) は成立しない。
-    その場合は full にフォールバックさせる。
+    activity モードは基本情報・特許層を据え置くため、初回 (full 未実行) や
+    新しい full 専用種別の追加直後はテーブルが揃わない。その場合は full に
+    フォールバックさせ、据え置く層を確実に用意する。
     """
     with _ducklake_connect() as conn:
-        rows = conn.execute(
-            "SELECT 1 FROM information_schema.tables "
-            "WHERE table_catalog = 'gbizinfo' AND table_name = ?",
-            [BASIC_RAW_MODEL],
-        ).fetchall()
-        return bool(rows)
+        for table_name in FULL_ONLY_RAW_MODELS:
+            rows = conn.execute(
+                "SELECT 1 FROM information_schema.tables "
+                "WHERE table_catalog = 'gbizinfo' AND table_name = ?",
+                [table_name],
+            ).fetchall()
+            if not rows:
+                return False
+        return True
 
 
 def main() -> None:
@@ -153,10 +164,10 @@ def main() -> None:
     mode = os.environ.get("GBIZINFO_SYNC_MODE", "full").lower()
     token = os.environ["GBIZINFO_API_TOKEN"]
 
-    if mode == "activity" and not _raw_basic_exists():
+    if mode == "activity" and not _full_only_raw_exists():
         logger.warning(
-            "activity モードだが %s が存在しないため full にフォールバックします",
-            BASIC_RAW_MODEL,
+            "activity モードだが %s が揃っていないため full にフォールバックします",
+            ", ".join(FULL_ONLY_RAW_MODELS),
         )
         mode = "full"
 
@@ -177,9 +188,10 @@ def main() -> None:
             for spec in types:
                 downloaded[spec.key] = _download_csv(client, spec, token, dest)
 
-        # raw モデルは var('gbiz_<key>_csv') を参照するため、全 5 種別の var を
-        # 定義する (activity モードで未取得の基本情報はダミーパス。raw_gbizinfo_basic
-        # を --exclude するため実行時には参照されない)。
+        # raw モデルは var('gbiz_<key>_csv') を参照するため、全種別の var を
+        # 定義する (activity モードで未取得の基本情報・特許はダミーパス。
+        # raw_gbizinfo_basic / raw_gbizinfo_patent を --exclude するため実行時には
+        # 参照されない)。
         unused = dest / "__unused__.csv"
         dbt_vars_parts = [
             f"gbiz_{spec.key}_csv: '{downloaded.get(spec.key, unused)}'"
@@ -189,7 +201,7 @@ def main() -> None:
 
         build_cmd = ["build", "--target", target, "--vars", dbt_vars]
         if mode == "activity":
-            build_cmd += ["--exclude", BASIC_RAW_MODEL]
+            build_cmd += ["--exclude", *FULL_ONLY_RAW_MODELS]
 
         dbt = dbtRunner()
         for cmd in (
