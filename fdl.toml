@@ -19,7 +19,7 @@ title = "gBizINFO 法人活動情報"
 description = "経済産業省 gBizINFO が公開する法人活動情報。法人番号をキーに、基本情報（資本金・従業員数・設立年・業種）、補助金、調達、財務、職場情報を収録。国税庁法人番号と結合できる"
 cover = "🏛️"
 tags = ['法人', '企業活動', '補助金', '調達', '財務', '経済産業省']
-repository_url = "https://github.com/flo8s/dataset-gbizinfo"
+repository_url = "https://github.com/queria-io/dataset-gbizinfo"
 source_url = "https://info.gbiz.go.jp/"
 schedule = "monthly"
 
