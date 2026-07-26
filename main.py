@@ -2,8 +2,8 @@
 
 経済産業省 gBizINFO のデータダウンロード機能から情報種別ごとの全件 CSV を取得し、
 そのパスを dbt の var として渡して raw→stg→mart を構築する。
-fdl の DuckLake カタログ (FDL_* 環境変数で注入) へ書き込み、
-R2 への公開は fdl run/sync の publish が担う。
+queria の DuckLake カタログ (QUERIA_* 環境変数で注入) へ書き込み、
+R2 への公開は queria sync の push が担う。
 
 gBizINFO の各ファイル (特許を除く) は日次更新される。鮮度を上げるため、更新の
 頻度に応じて取得対象を 2 モードに分ける:
@@ -18,7 +18,7 @@ gBizINFO の各ファイル (特許を除く) は日次更新される。鮮度�
     活動データと mart を再ビルドする。基本情報は前回の full ビルドの
     raw_gbizinfo_basic テーブルをそのまま使う。
     既存カタログの raw_gbizinfo_basic を参照するため、CI では
-    scripts/build.sh が `fdl pull` で公開済みカタログを取り込んでから実行する。
+    queria sync が pull で公開済みカタログを取り込んでから実行する。
 """
 
 from __future__ import annotations
