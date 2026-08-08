@@ -42,25 +42,6 @@ jobs:
       - name: Build and push
         run: scripts/build.sh
 
-      - name: Generate app token
-        id: app-token
-        if: success()
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: queria-io
-          repositories: dataset-catalog
-
-      - name: Trigger catalog rebuild
-        if: success()
-        run: |
-          gh api repos/queria-io/dataset-catalog/dispatches \
-            -f event_type=dataset-updated \
-            -f "client_payload[dataset]=gbizinfo"
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-
   notify-failure:
     runs-on: ubuntu-latest
     needs: sync
