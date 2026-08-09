@@ -1,6 +1,6 @@
 # dataset-gbizinfo
 
-経済産業省 gBizINFO の法人活動情報を取得し、DuckLake (fdl: SQLite カタログ + R2) に公開するデータセット。
+経済産業省 gBizINFO の法人活動情報を取得し、DuckLake (SQLite カタログ + R2) として Queria に公開するデータセット。
 法人番号 (corporate_number) をキーに国税庁法人番号 (dataset-houjin-bangou) や
 全国地方公共団体コード (dataset-lg-code) と結合できる。
 
@@ -49,11 +49,10 @@ corporate_number で結合できる形を保ち、物理的な結合はしない
 
 ```bash
 uv sync
-cp ../dataset-reinfolib/.env .env   # R2 の認証情報 (FDL_S3_*)
+echo "QUERIA_TOKEN=<Queria の API トークン>" > .env
 echo "GBIZINFO_API_TOKEN=<gBizINFO アクセストークン>" >> .env
 
-scripts/build.sh local              # ローカル (~/.local/share/fdl) へビルド
-scripts/build.sh default            # 本番 (R2) へビルド
+scripts/build.sh                    # ビルドして Queria に公開する
 ```
 
 `GBIZINFO_API_TOKEN` は gBizINFO の API 利用申請で発行されるアクセストークン

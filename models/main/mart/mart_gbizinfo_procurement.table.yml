@@ -1,0 +1,24 @@
+schema: main
+name: mart_gbizinfo_procurement
+title: 調達(受注)実績
+description: gBizINFO の国の調達(受注)実績(受注 1 件 1 行)。corporate_number で国税庁法人番号(houjin_bangou)と結合できる
+published: true
+sources:
+  - path: https://info.gbiz.go.jp/
+fields:
+  - name: corporate_number
+    title: 法人番号
+    description: 13桁。国税庁法人番号(houjin_bangou)と結合できる
+  - name: name
+    title: 商号または名称
+  - name: title
+    title: 件名
+  - name: award_price
+    title: 落札価格
+    description: 円
+  - name: org_name
+    title: 発注組織名
+  - name: note
+    title: 備考
+  - name: order_date
+    title: 受注日

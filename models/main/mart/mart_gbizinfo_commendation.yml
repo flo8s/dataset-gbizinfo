@@ -3,35 +3,11 @@ version: 2
 models:
   - name: mart_gbizinfo_commendation
     description: gBizINFO の表彰実績(表彰 1 件 1 行)。corporate_number で国税庁法人番号(houjin_bangou)と結合できる
-    config:
-      meta:
-        title: 表彰実績
-        published: true
-        source_url: "https://info.gbiz.go.jp/"
-        credit: >-
-          出典：gBizINFO（経済産業省）。
-          gBizINFO 利用規約に基づき出典を明記して再配布しています。
-          最新性・正確性・完全性等が保証されたものではありません
     columns:
       - name: corporate_number
-        meta:
-          title: 法人番号
-          description: 13桁。国税庁法人番号(houjin_bangou)と結合できる
       - name: name
-        meta:
-          title: 商号または名称
       - name: title
-        meta:
-          title: 表彰名称
       - name: target
-        meta:
-          title: 対象
       - name: division
-        meta:
-          title: 部門
       - name: issuer
-        meta:
-          title: 発行元
       - name: certification_date
-        meta:
-          title: 証明日

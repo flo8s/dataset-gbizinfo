@@ -25,10 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PYTHONUNBUFFERED: "1"
-      FDL_S3_ENDPOINT: https://${{ secrets.CF_ACCOUNT_ID }}.r2.cloudflarestorage.com
-      FDL_S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
-      FDL_S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
-      FDL_S3_BUCKET: ${{ vars.S3_BUCKET }}
+      # queria は誰のデータセットに書くのかをトークンから決める。R2 の鍵は渡さない
+      QUERIA_TOKEN: ${{ secrets.QUERIA_TOKEN }}
       CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
       CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
       CF_D1_DATABASE_ID: ${{ secrets.CF_D1_DATABASE_ID }}
@@ -43,30 +41,11 @@ jobs:
           enable-cache: true
       - run: uv python install 3.13
 
-      # fdl (frozen-ducklake) はベータ開発中のため、常に最新版を使用する
-      - run: uv lock --upgrade-package frozen-ducklake && uv sync
+      # queria はベータ開発中のため、常に最新版を使用する
+      - run: uv lock --upgrade-package queria && uv sync
 
       - name: Build and push
-        run: scripts/build.sh default
-
-      - name: Generate app token
-        id: app-token
-        if: success()
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: flo8s
-          repositories: dataset-catalog
-
-      - name: Trigger catalog rebuild
-        if: success()
-        run: |
-          gh api repos/flo8s/dataset-catalog/dispatches \
-            -f event_type=dataset-updated \
-            -f "client_payload[dataset]=gbizinfo"
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: scripts/build.sh
 
   notify-failure:
     runs-on: ubuntu-latest

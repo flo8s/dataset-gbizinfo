@@ -1,0 +1,59 @@
+spec_version: "0.1"
+name: gbizinfo
+title: gBizINFO 法人活動情報
+description: 経済産業省 gBizINFO が公開する法人活動情報。法人番号をキーに、基本情報（資本金・従業員数・設立年・業種）、補助金、調達、財務、職場情報、表彰、届出・認定、特許・意匠・商標を収録。国税庁法人番号と結合できる。
+  出典：gBizINFO（経済産業省）。gBizINFO 利用規約に基づき出典を明記して再配布しています。最新性・正確性・完全性等が保証されたものではありません。
+keywords:
+  - 法人
+  - 企業活動
+  - 補助金
+  - 調達
+  - 財務
+  - 表彰
+  - 届出認定
+  - 特許
+  - 経済産業省
+homepage: https://github.com/queria-io/dataset-gbizinfo
+language: ja
+
+licenses:
+  - JP-GOV-STD-2.0
+
+sources:
+  - title: gBizINFO（経済産業省）
+    path: https://info.gbiz.go.jp/
+
+contributors:
+  - title: 経済産業省
+    path: https://www.meti.go.jp/
+    roles: [rightsHolder]
+
+temporal_coverage: { start: "2013-05-17", end: null }
+spatial_coverage: [JP]
+update_frequency: monthly
+cover: 🏛️
+
+ai_context:
+  instructions: |
+    法人ごとの活動実績（補助金・国の調達・財務・職場環境）を調べる、
+    業種や規模で企業を絞り込む、といった用途に使う。
+    法人サマリは580万件で、国税庁法人番号（houjin_bangou）とほぼ同じ母集団。
+    ただし活動情報が付いている法人はごく一部で、補助金や調達の実績が無い法人では
+    集計列が0や NULL になる。「載っていない＝実績が無い」ではなく、公表されていないだけの
+    こともある。
+    補助金の交付実績は2013年5月以降、国の調達実績は2015年4月以降を収録する。
+    調達実績は p_portal（調達ポータルの落札実績）と対象が重なるが、集計元も粒度も別なので
+    件数は一致しない。
+    財務情報は有価証券報告書などを提出する企業に限られ、非上場の中小企業ではほぼ空。
+    資本金・従業員数は法人からの届出ベースで、更新時点が法人ごとにばらつく。
+    法人番号（corporate_number）で houjin_bangou / edinet / p_portal と結合できる。
+    法人名・所在地は houjin_bangou と重複するので、名寄せの正は houjin_bangou 側を使う。
+  synonyms: [gBizINFO, Gビズインフォ, 法人活動情報, 補助金, 調達実績]
+  examples:
+    - 補助金の交付実績が多い法人を調べたい
+    - ある法人の国の調達の受注実績を見たい
+    - 資本金の規模別に法人数を数えたい
+
+schemas:
+  - name: main
+    title: 法人活動情報

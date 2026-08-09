@@ -2,8 +2,8 @@
 
 経済産業省 gBizINFO のデータダウンロード機能から情報種別ごとの全件 CSV を取得し、
 そのパスを dbt の var として渡して raw→stg→mart を構築する。
-fdl の DuckLake カタログ (FDL_* 環境変数で注入) へ書き込み、
-R2 への公開は fdl run/sync の publish が担う。
+queria の DuckLake カタログ (QUERIA_* 環境変数で注入) へ書き込み、
+R2 への公開は queria sync の push が担う。
 
 gBizINFO の各ファイル (基本情報・特許を除く) は日次更新される。鮮度を上げるため、
 更新の頻度に応じて取得対象を 2 モードに分ける:
@@ -19,7 +19,7 @@ gBizINFO の各ファイル (基本情報・特許を除く) は日次更新さ�
     基本情報・特許層を据え置いたまま活動データと mart を再ビルドする。
     据え置く層は前回の full ビルドのテーブルをそのまま使う。
     既存カタログの raw_gbizinfo_basic / raw_gbizinfo_patent を参照するため、CI では
-    scripts/build.sh が `fdl pull` で公開済みカタログを取り込んでから実行する。
+    queria sync が pull で公開済みカタログを取り込んでから実行する。
 """
 
 from __future__ import annotations
@@ -112,28 +112,37 @@ def _download_csv(client: httpx.Client, spec: TypeSpec, token: str, dest_dir: Pa
 
 @contextmanager
 def _ducklake_connect() -> Generator[duckdb.DuckDBPyConnection]:
-    """Open a fresh DuckDB session with the fdl-managed DuckLake attached."""
-    catalog_path = os.environ["FDL_CATALOG_PATH"]
-    data_url = os.environ["FDL_DATA_URL"]
+    """Open a fresh DuckDB session with the queria-managed DuckLake attached."""
+    catalog_path = os.environ["QUERIA_CATALOG_PATH"]
+    data_url = os.environ["QUERIA_DATA_URL"]
     conn = duckdb.connect(":memory:")
     try:
         conn.execute("INSTALL ducklake; LOAD ducklake;")
         conn.execute("INSTALL sqlite; LOAD sqlite;")
         if data_url.startswith("s3://"):
             conn.execute("INSTALL httpfs; LOAD httpfs;")
+            # credential_chain はこの拡張にある
+            conn.execute("INSTALL aws; LOAD aws;")
+            # 認証情報を値として持たず、期限が切れたら取り直させる。一時認証情報は
+            # 15 分で切れるのに対しこのビルドはそれより長く走るので、値を渡す形だと
+            # 途中で書けなくなる。process が実行するのは queria で、鍵はどこにも置かない
+            use_ssl = (
+                "false" if os.environ.get("QUERIA_S3_USE_SSL") == "false" else "true"
+            )
             conn.execute(
-                "CREATE SECRET (TYPE s3, KEY_ID ?, SECRET ?, ENDPOINT ?, "
-                "URL_STYLE 'path', REGION 'auto')",
+                "CREATE SECRET (TYPE s3, PROVIDER credential_chain, "
+                "CHAIN 'process', REFRESH auto, ENDPOINT ?, URL_STYLE 'path', "
+                f"REGION ?, USE_SSL {use_ssl})",
                 [
-                    os.environ["FDL_S3_ACCESS_KEY_ID"],
-                    os.environ["FDL_S3_SECRET_ACCESS_KEY"],
-                    os.environ["FDL_S3_ENDPOINT_HOST"],
+                    os.environ["QUERIA_S3_ENDPOINT_HOST"],
+                    os.environ.get("QUERIA_S3_REGION", "auto"),
                 ],
             )
         conn.execute(
             f"ATTACH 'ducklake:{catalog_path}' AS gbizinfo "
             f"(DATA_PATH '{data_url}', OVERRIDE_DATA_PATH true, "
-            f"META_TYPE 'sqlite', META_JOURNAL_MODE 'WAL', BUSY_TIMEOUT 5000)"
+            f"DATA_INLINING_ROW_LIMIT 0, META_TYPE 'sqlite', "
+            f"META_JOURNAL_MODE 'WAL', BUSY_TIMEOUT 5000)"
         )
         yield conn
     finally:
