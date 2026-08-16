@@ -20,11 +20,22 @@ gBizINFO の「データダウンロード」から取得した 8 種別の全�
 公開 mart:
 
 - `mart_gbizinfo_company` — 法人 1 行の活動サマリ (基本属性 + 補助金/調達集計 + 最新財務 + 職場指標)
+- `mart_gbizinfo_finance` — 財務指標の推移 (法人 × 回次 1 行・1 法人あたり直近 5 期まで)
 - `mart_gbizinfo_subsidy` — 補助金交付実績 (1 件 1 行)
 - `mart_gbizinfo_procurement` — 調達 (受注) 実績 (1 件 1 行)
 - `mart_gbizinfo_commendation` — 表彰実績 (1 件 1 行)
 - `mart_gbizinfo_certification` — 届出・認定実績 (1 件 1 行)
 - `mart_gbizinfo_patent` — 特許・意匠・商標の登録実績 (1 件 1 行)
+
+### 財務情報の期の扱い
+
+財務情報は 1 法人あたり直近 5 期分を回次 (`period_number`) 0〜4 で持つ (0 が最新)。
+ただし gBizINFO が返す事業年度の表記は最新期のぶんしか無く、どの回次の行にも同じ文字列
+(例「第20期（自 2025年４月１日 至 2026年３月31日）」) が入る。
+
+そのため `stg_gbizinfo_finance` でこの表記から最新期の期末日 `latest_period_end` を取り出し
+(和暦表記も西暦へ変換する)、そこから回次の分だけ年をさかのぼった `period_end_estimated` を
+付けている。後者は推定値で、決算期を変更した法人ではずれる。回次の無い期の行は作らない。
 
 ## 取得方式
 
