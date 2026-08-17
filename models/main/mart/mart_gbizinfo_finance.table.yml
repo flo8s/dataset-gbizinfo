@@ -35,7 +35,16 @@ fields:
     title: 会計基準
   - name: net_sales
     title: 売上高
-    description: 円
+    description: 円。銀行・保険・鉄道などはこの欄を使わず operating_revenue / ordinary_revenue / net_premiums_written で収益を報告するため、収益がある行でも空になる
+  - name: operating_revenue
+    title: 営業収益
+    description: 円。売上高の欄を使わない業種の収益
+  - name: ordinary_revenue
+    title: 経常収益
+    description: 円。主に金融業
+  - name: net_premiums_written
+    title: 正味収入保険料
+    description: 円。主に損害保険業
   - name: ordinary_income
     title: 経常利益
     description: 円
