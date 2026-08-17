@@ -27,7 +27,7 @@ fields:
     description: latest_period_end から回次の分だけ年をさかのぼった推定値。gBizINFO は最新期の期末日しか持たないため、決算期を変更した法人ではずれる。period_number = 0 の行は latest_period_end と一致する
   - name: latest_period_end
     title: 最新期の期末日
-    description: latest_period_label の「至」以降を解釈した実値。法人ごとに 1 つで、どの回次の行にも同じ値が入る
+    description: latest_period_label の期末の側（「至 ...」または「...から ...まで」）を解釈した実値。法人ごとに 1 つで、どの回次の行にも同じ値が入る
   - name: latest_period_label
     title: 最新期の表記
     description: 「第20期（自 2025年４月１日 至 2026年３月31日）」のような原文。行の回次ではなく最新期を指す
