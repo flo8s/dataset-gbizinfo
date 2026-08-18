@@ -10,7 +10,6 @@ models:
       - name: period_end_estimated
       - name: latest_period_end
       - name: latest_period_label
-      - name: accounting_standards
       - name: net_sales
       - name: operating_revenue
       - name: ordinary_revenue

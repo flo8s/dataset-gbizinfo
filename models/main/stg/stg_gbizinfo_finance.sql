@@ -43,7 +43,6 @@ dated as (
 select
     lpad(trim(corporate_number), 13, '0')                          as corporate_number,
     name,
-    accounting_standards,
     fiscal_year,
     latest_period_end,
     cast(latest_period_end

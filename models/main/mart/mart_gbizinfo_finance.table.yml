@@ -31,8 +31,6 @@ fields:
   - name: latest_period_label
     title: 最新期の表記
     description: 「第20期（自 2025年４月１日 至 2026年３月31日）」のような原文。行の回次ではなく最新期を指す
-  - name: accounting_standards
-    title: 会計基準
   - name: net_sales
     title: 売上高
     description: 円。銀行・保険・鉄道などはこの欄を使わず operating_revenue / ordinary_revenue / net_premiums_written で収益を報告するため、収益がある行でも空になる

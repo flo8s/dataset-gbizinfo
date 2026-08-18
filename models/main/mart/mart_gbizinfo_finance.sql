@@ -10,7 +10,6 @@ select
     period_end_estimated,
     latest_period_end,
     fiscal_year as latest_period_label,
-    accounting_standards,
     net_sales,
     operating_revenue,
     ordinary_revenue,
