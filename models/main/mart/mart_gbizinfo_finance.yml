@@ -12,6 +12,8 @@ models:
       - name: latest_period_label
       - name: net_sales
       - name: operating_revenue
+      - name: operating_income
+      - name: gross_operating_revenue
       - name: ordinary_revenue
       - name: net_premiums_written
       - name: ordinary_income

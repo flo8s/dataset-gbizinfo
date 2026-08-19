@@ -49,9 +49,13 @@ select
         - to_years(try_cast(period_number as integer)) as date)    as period_end_estimated,
     try_cast(period_number as integer)                             as period_number,
     try_cast(regexp_replace(net_sales, '[^0-9]', '', 'g') as bigint)        as net_sales,
-    -- 銀行・保険・鉄道などは売上高の欄を使わず、営業収益/経常収益/正味収入保険料で
-    -- 収益を報告する。売上高だけを見ると収益が空に見えるので併せて持つ。
+    -- 銀行・保険・鉄道・不動産などは売上高の欄を使わず、営業収益/営業収入/営業総収入/
+    -- 経常収益/正味収入保険料のいずれかで収益を報告する。売上高だけを見ると収益が
+    -- 空に見えるので併せて持つ。operating_income は「営業収入」で営業利益ではない。
     try_cast(regexp_replace(operating_revenue, '[^0-9]', '', 'g') as bigint) as operating_revenue,
+    try_cast(regexp_replace(operating_income, '[^0-9]', '', 'g') as bigint)  as operating_income,
+    try_cast(regexp_replace(gross_operating_revenue, '[^0-9]', '', 'g') as bigint)
+                                                                   as gross_operating_revenue,
     try_cast(regexp_replace(ordinary_revenue, '[^0-9]', '', 'g') as bigint)  as ordinary_revenue,
     try_cast(regexp_replace(net_premiums_written, '[^0-9]', '', 'g') as bigint)
                                                                    as net_premiums_written,

@@ -12,6 +12,8 @@ select
     fiscal_year as latest_period_label,
     net_sales,
     operating_revenue,
+    operating_income,
+    gross_operating_revenue,
     ordinary_revenue,
     net_premiums_written,
     ordinary_income,

@@ -37,6 +37,12 @@ fields:
   - name: operating_revenue
     title: 営業収益
     description: 円。売上高の欄を使わない業種の収益
+  - name: operating_income
+    title: 営業収入
+    description: 円。売上高の欄を使わない業種の収益。営業利益ではない
+  - name: gross_operating_revenue
+    title: 営業総収入
+    description: 円。売上高の欄を使わない業種の収益
   - name: ordinary_revenue
     title: 経常収益
     description: 円。主に金融業
