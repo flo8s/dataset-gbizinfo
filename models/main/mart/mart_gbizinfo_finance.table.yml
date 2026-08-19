@@ -37,9 +37,9 @@ fields:
   - name: operating_revenue
     title: 営業収益
     description: 円。売上高の欄を使わない業種の収益
-  - name: operating_income
+  - name: operating_receipts
     title: 営業収入
-    description: 円。売上高の欄を使わない業種の収益。営業利益ではない
+    description: 円。売上高の欄を使わない業種の収益。利益ではなく収入の側
   - name: gross_operating_revenue
     title: 営業総収入
     description: 円。売上高の欄を使わない業種の収益

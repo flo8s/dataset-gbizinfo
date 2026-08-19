@@ -7,7 +7,8 @@
    「第20期（自 2025年４月１日 至 2026年３月31日）」のような最新期のラベルで、
    行ごとの年度ではない。時系列として扱えるよう、ラベルの「至」以降から最新期の
    期末日 (latest_period_end) を取り出し、そこから回次分をさかのぼった期末日を
-   period_end_estimated として持たせる。 #}
+   period_end_estimated として持たせる。ラベルは法人が書いた文字列なので、
+   解釈できない表記も日付として成立しない値もビルドを止めずに空で通す。 #}
 with parsed as (
     select
         *,
@@ -24,20 +25,42 @@ with parsed as (
     from {{ ref('raw_gbizinfo_finance') }}
 ),
 
+parts as (
+    select
+        *,
+        -- 元号は年の直前にしか付かない。「2026年3月31日（令和8年3月期）」のように離れた位置へ
+        -- 併記された元号を西暦の年に足さないよう、元号と年は 1 つの正規表現でまとめて取る。
+        regexp_extract(period_end_text, '(令和|平成|昭和)?[\s\p{Z}]*([0-9]{1,4})年', 1) as era,
+        try_cast(regexp_extract(period_end_text, '(令和|平成|昭和)?[\s\p{Z}]*([0-9]{1,4})年', 2)
+            as integer)                                            as era_year,
+        try_cast(regexp_extract(period_end_text, '年[^0-9]*([0-9]{1,2})月', 1) as integer) as month_of_year,
+        try_cast(regexp_extract(period_end_text, '月[^0-9]*([0-9]{1,2})日', 1) as integer) as day_of_month
+    from parsed
+),
+
 dated as (
     select
         *,
-        try_cast(make_date(
-            case regexp_extract(period_end_text, '(令和|平成|昭和)', 1)
-                when '令和' then 2018
-                when '平成' then 1988
-                when '昭和' then 1925
-                else 0
-            end + try_cast(regexp_extract(period_end_text, '([0-9]{1,4})年', 1) as integer),
-            try_cast(regexp_extract(period_end_text, '年[^0-9]*([0-9]{1,2})月', 1) as integer),
-            try_cast(regexp_extract(period_end_text, '月[^0-9]*([0-9]{1,2})日', 1) as integer)
-        ) as date) as latest_period_end
-    from parsed
+        -- make_date は 2月30日 のような範囲外の月日で例外を投げ、外側の try_cast では
+        -- 捕まえられない (引数の評価で落ちる)。表記ゆれ 1 件でビルド全体が止まるので、
+        -- 日付は文字列に組んでから try_cast する。
+        try_cast(
+            case
+                when era_year is not null and month_of_year is not null and day_of_month is not null
+                then printf(
+                    '%04d-%02d-%02d',
+                    era_year + case era
+                        when '令和' then 2018
+                        when '平成' then 1988
+                        when '昭和' then 1925
+                        else 0
+                    end,
+                    month_of_year,
+                    day_of_month
+                )
+            end as date
+        )                                                          as latest_period_end
+    from parts
 )
 
 select
@@ -51,9 +74,10 @@ select
     try_cast(regexp_replace(net_sales, '[^0-9]', '', 'g') as bigint)        as net_sales,
     -- 銀行・保険・鉄道・不動産などは売上高の欄を使わず、営業収益/営業収入/営業総収入/
     -- 経常収益/正味収入保険料のいずれかで収益を報告する。売上高だけを見ると収益が
-    -- 空に見えるので併せて持つ。operating_income は「営業収入」で営業利益ではない。
+    -- 空に見えるので併せて持つ。raw の operating_income は元データの並び (営業収入) に
+    -- 由来する名前で、経常利益 (ordinary_income) と紛らわしいので収入側だと分かる名前に直す。
     try_cast(regexp_replace(operating_revenue, '[^0-9]', '', 'g') as bigint) as operating_revenue,
-    try_cast(regexp_replace(operating_income, '[^0-9]', '', 'g') as bigint)  as operating_income,
+    try_cast(regexp_replace(operating_income, '[^0-9]', '', 'g') as bigint)  as operating_receipts,
     try_cast(regexp_replace(gross_operating_revenue, '[^0-9]', '', 'g') as bigint)
                                                                    as gross_operating_revenue,
     try_cast(regexp_replace(ordinary_revenue, '[^0-9]', '', 'g') as bigint)  as ordinary_revenue,
