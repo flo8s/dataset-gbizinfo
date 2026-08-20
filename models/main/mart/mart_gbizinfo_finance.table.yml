@@ -1,0 +1,68 @@
+schema: main
+name: mart_gbizinfo_finance
+title: 財務指標の推移
+description: gBizINFO の財務指標の推移(法人 × 回次 1 行)。1 法人あたり直近 5 期分までを収録し、売上高・経常利益・当期純利益・総資産・純資産の年度をまたぐ推移を追える。有価証券報告書などを提出する企業に限られるため、非上場の中小企業はほとんど含まれない。corporate_number
+  で国税庁法人番号(houjin_bangou)・EDINET(edinet)・調達ポータル(p_portal)と結合できる
+published: true
+keywords:
+  - 財務
+  - 売上高
+  - 経常利益
+  - 総資産
+  - 時系列
+  - 法人
+sources:
+  - path: https://info.gbiz.go.jp/
+fields:
+  - name: corporate_number
+    title: 法人番号
+    description: 13桁。国税庁法人番号(houjin_bangou)と結合できる
+  - name: name
+    title: 商号または名称
+  - name: period_number
+    title: 回次
+    description: 0 が最新で、数字が大きいほど過去。1 法人あたり 0〜4 の最大 5 期。全法人が 5 期そろうわけではない
+  - name: period_end_estimated
+    title: 期末日（推定）
+    description: latest_period_end から回次の分だけ年をさかのぼった推定値。gBizINFO は最新期の期末日しか持たないため、決算期を変更した法人ではずれる。period_number = 0 の行は latest_period_end と一致する
+  - name: latest_period_end
+    title: 最新期の期末日
+    description: latest_period_label の期末の側（「至 ...」または「...から ...まで」）を解釈した実値。法人ごとに 1 つで、どの回次の行にも同じ値が入る
+  - name: latest_period_label
+    title: 最新期の表記
+    description: 「第20期（自 2025年４月１日 至 2026年３月31日）」のような原文。行の回次ではなく最新期を指す
+  - name: net_sales
+    title: 売上高
+    description: 円。銀行・保険・鉄道などはこの欄を使わず operating_revenue / ordinary_revenue / net_premiums_written で収益を報告するため、収益がある行でも空になる
+  - name: operating_revenue
+    title: 営業収益
+    description: 円。売上高の欄を使わない業種の収益
+  - name: operating_receipts
+    title: 営業収入
+    description: 円。売上高の欄を使わない業種の収益。利益ではなく収入の側
+  - name: gross_operating_revenue
+    title: 営業総収入
+    description: 円。売上高の欄を使わない業種の収益
+  - name: ordinary_revenue
+    title: 経常収益
+    description: 円。主に金融業
+  - name: net_premiums_written
+    title: 正味収入保険料
+    description: 円。主に損害保険業
+  - name: ordinary_income
+    title: 経常利益
+    description: 円
+  - name: net_income
+    title: 当期純利益
+    description: 円
+  - name: total_assets
+    title: 総資産
+    description: 円
+  - name: net_assets
+    title: 純資産
+    description: 円
+  - name: capital_stock
+    title: 資本金
+    description: 円
+  - name: employee_number
+    title: 従業員数

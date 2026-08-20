@@ -1,20 +1,94 @@
 {{ config(materialized='view') }}
 
 {# 財務情報 (事業年度・回次ごと 1 行)。主要指標のみ抽出して数値化する。
-   回次 (period_number) は 0 が最新で、数字が大きいほど過去。 #}
+   回次 (period_number) は 0 が最新で、数字が大きいほど過去。
+
+   fiscal_year は法人ごとに 1 つしか無く、回次が違っても同じ値が入る。中身は
+   「第20期（自 2025年４月１日 至 2026年３月31日）」のような最新期のラベルで、
+   行ごとの年度ではない。時系列として扱えるよう、ラベルの「至」以降から最新期の
+   期末日 (latest_period_end) を取り出し、そこから回次分をさかのぼった期末日を
+   period_end_estimated として持たせる。ラベルは法人が書いた文字列なので、
+   解釈できない表記も日付として成立しない値もビルドを止めずに空で通す。 #}
+with parsed as (
+    select
+        *,
+        -- 全角数字を半角へ、「元年」を「1年」へ寄せてから期末の側を取り出す。
+        -- 期末の書き出しは「至 ...」と「...から ...まで」の 2 通りあり、
+        -- 和暦 (令和・平成・昭和) 表記が 5% ほど混ざる。
+        regexp_extract(
+            replace(
+                translate(fiscal_year, '０１２３４５６７８９', '0123456789'),
+                '元年', '1年'
+            ),
+            '(?:至|から)(.*)', 1
+        ) as period_end_text
+    from {{ ref('raw_gbizinfo_finance') }}
+),
+
+parts as (
+    select
+        *,
+        -- 元号は年の直前にしか付かない。「2026年3月31日（令和8年3月期）」のように離れた位置へ
+        -- 併記された元号を西暦の年に足さないよう、元号と年は 1 つの正規表現でまとめて取る。
+        regexp_extract(period_end_text, '(令和|平成|昭和)?[\s\p{Z}]*([0-9]{1,4})年', 1) as era,
+        try_cast(regexp_extract(period_end_text, '(令和|平成|昭和)?[\s\p{Z}]*([0-9]{1,4})年', 2)
+            as integer)                                            as era_year,
+        try_cast(regexp_extract(period_end_text, '年[^0-9]*([0-9]{1,2})月', 1) as integer) as month_of_year,
+        try_cast(regexp_extract(period_end_text, '月[^0-9]*([0-9]{1,2})日', 1) as integer) as day_of_month
+    from parsed
+),
+
+dated as (
+    select
+        *,
+        -- make_date は 2月30日 のような範囲外の月日で例外を投げ、外側の try_cast では
+        -- 捕まえられない (引数の評価で落ちる)。表記ゆれ 1 件でビルド全体が止まるので、
+        -- 日付は文字列に組んでから try_cast する。
+        try_cast(
+            case
+                when era_year is not null and month_of_year is not null and day_of_month is not null
+                then printf(
+                    '%04d-%02d-%02d',
+                    era_year + case era
+                        when '令和' then 2018
+                        when '平成' then 1988
+                        when '昭和' then 1925
+                        else 0
+                    end,
+                    month_of_year,
+                    day_of_month
+                )
+            end as date
+        )                                                          as latest_period_end
+    from parts
+)
+
 select
     lpad(trim(corporate_number), 13, '0')                          as corporate_number,
     name,
-    accounting_standards,
     fiscal_year,
+    latest_period_end,
+    cast(latest_period_end
+        - to_years(try_cast(period_number as integer)) as date)    as period_end_estimated,
     try_cast(period_number as integer)                             as period_number,
     try_cast(regexp_replace(net_sales, '[^0-9]', '', 'g') as bigint)        as net_sales,
+    -- 銀行・保険・鉄道・不動産などは売上高の欄を使わず、営業収益/営業収入/営業総収入/
+    -- 経常収益/正味収入保険料のいずれかで収益を報告する。売上高だけを見ると収益が
+    -- 空に見えるので併せて持つ。raw の operating_income は元データの並び (営業収入) に
+    -- 由来する名前で、経常利益 (ordinary_income) と紛らわしいので収入側だと分かる名前に直す。
+    try_cast(regexp_replace(operating_revenue, '[^0-9]', '', 'g') as bigint) as operating_revenue,
+    try_cast(regexp_replace(operating_income, '[^0-9]', '', 'g') as bigint)  as operating_receipts,
+    try_cast(regexp_replace(gross_operating_revenue, '[^0-9]', '', 'g') as bigint)
+                                                                   as gross_operating_revenue,
+    try_cast(regexp_replace(ordinary_revenue, '[^0-9]', '', 'g') as bigint)  as ordinary_revenue,
+    try_cast(regexp_replace(net_premiums_written, '[^0-9]', '', 'g') as bigint)
+                                                                   as net_premiums_written,
     try_cast(regexp_replace(ordinary_income, '[^0-9-]', '', 'g') as bigint) as ordinary_income,
     try_cast(regexp_replace(net_income, '[^0-9-]', '', 'g') as bigint)      as net_income,
     try_cast(regexp_replace(total_assets, '[^0-9]', '', 'g') as bigint)     as total_assets,
     try_cast(regexp_replace(net_assets, '[^0-9-]', '', 'g') as bigint)      as net_assets,
     try_cast(regexp_replace(capital_stock, '[^0-9]', '', 'g') as bigint)    as capital_stock,
     try_cast(employee_number as integer)                           as employee_number
-from {{ ref('raw_gbizinfo_finance') }}
+from dated
 where corporate_number is not null
   and trim(corporate_number) <> ''
