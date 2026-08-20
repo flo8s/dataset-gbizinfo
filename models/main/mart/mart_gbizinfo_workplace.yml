@@ -1,0 +1,28 @@
+version: 2
+
+models:
+  - name: mart_gbizinfo_workplace
+    description: gBizINFO の職場情報(法人 1 行)。女性活躍・両立支援の公表項目を落とさずに出す。指標を 1 つ以上報告している法人のみ。corporate_number で国税庁法人番号(houjin_bangou)と結合できる
+    columns:
+      - name: corporate_number
+      - name: name
+      - name: avg_age
+      - name: avg_monthly_overtime
+      - name: avg_service_years_scope
+      - name: avg_service_years_male
+      - name: avg_service_years_female
+      - name: avg_service_years_regular
+      - name: female_ratio_scope
+      - name: female_ratio
+      - name: female_managers
+      - name: total_managers
+      - name: female_manager_ratio
+      - name: female_officers
+      - name: total_officers
+      - name: female_officer_ratio
+      - name: childcare_leave_eligible_male
+      - name: childcare_leave_taken_male
+      - name: childcare_leave_ratio_male
+      - name: childcare_leave_eligible_female
+      - name: childcare_leave_taken_female
+      - name: childcare_leave_ratio_female
